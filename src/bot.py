@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from os import getenv
 
 import discord
@@ -20,9 +19,6 @@ class Bot(commands.Bot):
         super().__init__(
             command_prefix=commands.when_mentioned_or("!"),
             intents=intents,
-            activity=discord.Activity(
-                type=discord.ActivityType.listening, name="!help | Music Bot"
-            ),
         )
 
         self.initial_extensions = ["src.cogs.music"]
