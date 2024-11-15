@@ -5,7 +5,14 @@ import discord
 import httpx
 from discord.ext import commands
 
-from ..video import YTDLSource
+from src.audio_source import AudioSource
+from src.audio_streamer import AudioStreamManager
+from src.cache_manager import CacheManager
+from src.codec_checker import CodecChecker
+
+cache_manager = CacheManager()
+audio_stream_manager = AudioStreamManager(cache_manager=cache_manager)
+codec_checker = CodecChecker(cache_manager=cache_manager)
 
 url_pattern = r"^(https?://)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"
 
@@ -90,35 +97,78 @@ class Music(commands.Cog):
     @commands.hybrid_command(name="play", aliases=["p"])
     @commands.guild_only()
     async def play(self, ctx, *, song: str):
-        """Streams from a url or a search query (almost anything youtube_dl supports)"""
+        """
+        Streams from a URL or a search query (supports most sources compatible with yt-dlp).
+        """
+        try:
+            # Defer interaction if it's a slash command
+            if ctx.interaction:
+                await ctx.interaction.response.defer()
 
-        if not re.match(url_pattern, song):
-            video_id = await self._search_yt(song)
-            song = f"https://www.youtube.com/watch?v={video_id}"
-            if not video_id:
-                await ctx.send("No video IDs found for the search query.")
+            # Check if the input is a URL; otherwise, search
+            if not re.match(url_pattern, song):
+                video_id = await self._search_yt(song)
+                if not video_id:
+                    if ctx.interaction:
+                        await ctx.interaction.followup.send(
+                            "No video IDs found for the search query."
+                        )
+                    else:
+                        await ctx.send("No video IDs found for the search query.")
+                    return
+                song = f"https://www.youtube.com/watch?v={video_id}"
 
-        client = ctx.guild.voice_client
+            client = ctx.guild.voice_client
 
-        if client and client.channel:
-            source = await YTDLSource.from_url(song, loop=self.bot.loop, stream=True)
-            self.queue.append(source)
-            embed = discord.Embed(
-                description=f"Queued [{source.title}]({source.url}) [{ctx.author.mention}]",
-                color=discord.Color.blurple(),
-            )
-            await ctx.send(embed=embed)
-        else:
-            if ctx.author.voice is not None and ctx.author.voice.channel is not None:
-                channel = ctx.author.voice.channel
-                source = await YTDLSource.from_url(
-                    song, loop=self.bot.loop, stream=True
+            if client and client.channel:
+                # Add song to the queue
+                source = await AudioSource.from_url(
+                    song,
+                    audio_stream_manager=audio_stream_manager,
+                    codec_checker=codec_checker,
+                    loop=self.bot.loop,
                 )
-                client = await channel.connect()
-                self._play_song(client, source)
-                await self.nowplaying(ctx)
+                self.queue.append(source)
+                embed = discord.Embed(
+                    description=f"Queued [{source.title}]({source.url}) [{ctx.author.mention}]",
+                    color=discord.Color.blurple(),
+                )
+                if ctx.interaction:
+                    await ctx.interaction.followup.send(embed=embed)
+                else:
+                    await ctx.send(embed=embed)
             else:
-                await ctx.send("You are not connected to a voice channel.")
+                if ctx.author.voice and ctx.author.voice.channel:
+                    # Join the voice channel and play the song
+                    channel = ctx.author.voice.channel
+                    source = await AudioSource.from_url(
+                        song,
+                        audio_stream_manager=audio_stream_manager,
+                        codec_checker=codec_checker,
+                        loop=self.bot.loop,
+                    )
+                    client = await channel.connect()
+                    self._play_song(client, source)
+                    embed = discord.Embed(
+                        description=f"Now playing [{source.title}]({source.url}) [{ctx.author.mention}]",
+                        color=discord.Color.green(),
+                    )
+                    if ctx.interaction:
+                        await ctx.interaction.followup.send(embed=embed)
+                    else:
+                        await ctx.send(embed=embed)
+                else:
+                    if ctx.interaction:
+                        await ctx.interaction.followup.send(
+                            "You are not connected to a voice channel."
+                        )
+                    else:
+                        await ctx.send("You are not connected to a voice channel.")
+        except Exception as e:
+            if ctx.interaction:
+                await ctx.interaction.followup.send(f"An error occurred: {e}")
+            else:
+                await ctx.send(f"An error occurred: {e}")
 
     def _play_song(self, client, source):
         self.now_playing = source
