@@ -15,6 +15,7 @@ class AudioStreamManager:
             "no_warnings": True,
             "skip_download": True,
             "extract_flat": True,
+            "cookiefile": "cookies.txt",
         }
         self.ytdl = yt_dlp.YoutubeDL(self.params)
 
