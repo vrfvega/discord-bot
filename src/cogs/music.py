@@ -250,7 +250,7 @@ class Music(commands.Cog):
         if results.load_type == LoadType.EMPTY:
             embed.title = "Oops..."
             embed.description = "I couldn't find any results for that query."
-            await ctx.send(embed=embed)
+            return await ctx.send(embed=embed)
         elif results.load_type == LoadType.PLAYLIST:
             tracks = results.tracks
 
@@ -262,17 +262,19 @@ class Music(commands.Cog):
 
             embed.title = "Playlist Enqueued!"
             embed.description = f"{results.playlist_info.name} - {len(tracks)} tracks"
-            await ctx.send(embed=embed)
+            return await ctx.send(embed=embed)
         else:
             track = results.tracks[0]
+            
+            # requester isn't necessary but it helps keep track of who queued what.
+            # You can store additional metadata by passing it as a kwarg (i.e. key=value)
+            player.add(track=track, requester=ctx.author.id)
 
             if player.is_playing:
                 embed.title = "Track Enqueued"
                 embed.description = f"[{track.title}]({track.uri})"
+                return await ctx.send(embed=embed)
 
-            # requester isn't necessary but it helps keep track of who queued what.
-            # You can store additional metadata by passing it as a kwarg (i.e. key=value)
-            player.add(track=track, requester=ctx.author.id)
 
         # We don't want to call .play() if the player is playing as that will effectively skip
         # the current track.
@@ -290,54 +292,33 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(aliases=["q"])
     @commands.check(create_player)
-    async def queue(self, ctx):
+    async def queue(self, ctx, page: int = 1):
         """Displays the current queue."""
-        # Get the player for this guild from cache.
         player = self.bot.lavalink.player_manager.get(ctx.guild.id)
-
         queue = player.queue
-
         embed = discord.Embed(color=discord.Color.blurple(), title="Queue")
-        embed.description = "\n".join(
-            [f"{index + 1}. {track.title}" for index, track in enumerate(queue)]
-        )
-        await ctx.send(embed=embed)
 
-    @commands.hybrid_command(aliases=["lp"])
-    @commands.check(create_player)
-    async def lowpass(self, ctx, strength: float):
-        """Sets the strength of the low pass filter."""
-        # Get the player for this guild from cache.
-        player = self.bot.lavalink.player_manager.get(ctx.guild.id)
-
-        # This enforces that strength should be a minimum of 0.
-        # There's no upper limit on this filter.
-        strength = max(0.0, strength)
-
-        # Even though there's no upper limit, we will enforce one anyway to prevent
-        # extreme values from being entered. This will enforce a maximum of 100.
-        strength = min(100, strength)
-
-        embed = discord.Embed(color=discord.Color.blurple(), title="Low Pass Filter")
-
-        # A strength of 0 effectively means this filter won't function, so we can disable it.
-        if strength == 0.0:
-            await player.remove_filter("lowpass")
-            embed.description = "Disabled **Low Pass Filter**"
+        if not queue:
+            embed.description = "The queue is empty."
             return await ctx.send(embed=embed)
 
-        # Lets create our filter.
-        low_pass = LowPass()
-        low_pass.update(
-            smoothing=strength
-        )  # Set the filter strength to the user's desired level.
+        items_per_page = 10
+        total_pages = (len(queue) - 1) // items_per_page + 1
+        page = max(1, min(page, total_pages))
 
-        # This applies our filter. If the filter is already enabled on the player, then this will
-        # just overwrite the filter with the new values.
-        await player.set_filter(low_pass)
+        start = (page - 1) * items_per_page
+        end = start + items_per_page
 
-        embed.description = f"Set **Low Pass Filter** strength to {strength}."
-        await ctx.send(embed=embed)
+        embed = discord.Embed(
+            color=discord.Color.blurple(),
+            title=f"Queue - Page {page}/{total_pages}",
+        )
+
+        embed.description = "\n".join(
+            f"`{index + 1}.` [{track.title}]({track.uri})"
+            for index, track in enumerate(queue[start:end], start=start)
+        )
+        return await ctx.send(embed=embed)
 
     @commands.hybrid_command(aliases=["dc"])
     @commands.check(create_player)
@@ -354,7 +335,10 @@ class Music(commands.Cog):
         await player.stop()
         # Disconnect from the voice channel.
         await ctx.voice_client.disconnect(force=True)
-        await ctx.send("✳ | Disconnected.")
+        
+        embed = discord.Embed(color=discord.Color.blurple())
+        embed.description = "I've automatically left the voice channel due to inactivity."
+        await ctx.send(embed=embed)
 
 
 async def setup(bot):
