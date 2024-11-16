@@ -56,20 +56,8 @@ class AudioSource(discord.PCMVolumeTransformer):
         loop = loop or asyncio.get_event_loop()
 
         try:
-            # Define async tasks
-            async def fetch_stream_url():
-                logger.info("Fetching audio stream URL...")
-                return audio_stream_manager.get_audio_stream(url)
-
-            # TODO!: Metadata should also be cached and fetched from the cache
-            async def fetch_metadata():
-                logger.info("Fetching metadata...")
-                return audio_stream_manager.get_metadata(url)
-
-            # Run tasks in parallel
-            stream_url, metadata = await asyncio.gather(
-                fetch_stream_url(), fetch_metadata()
-            )
+            # Get the audio stream URL and metadata
+            stream_url, metadata = await audio_stream_manager.get_stream_info(url)
             logger.info(f"Stream URL fetched: {stream_url}")
             logger.info(
                 f"Metadata fetched: {metadata.get('title')} by {metadata.get('uploader')}"

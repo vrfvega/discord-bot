@@ -15,7 +15,6 @@ from src.codec_checker import CodecChecker
 cache_manager = CacheManager()
 audio_stream_manager = AudioStreamManager(cache_manager=cache_manager)
 codec_checker = CodecChecker(cache_manager=cache_manager)
-url_pattern = r"^(https?://)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"
 
 
 async def audio_playing(ctx):
@@ -233,7 +232,6 @@ class Music(commands.Cog):
     @commands.hybrid_command(name="volume", aliases=["vol", "v"])
     @commands.guild_only()
     @commands.check(audio_playing)
-    @commands.check(in_voice_channel)
     async def volume(self, ctx, volume: int):
         """Changes the player's volume"""
         ctx.voice_client.source.volume = volume / 100
@@ -246,7 +244,6 @@ class Music(commands.Cog):
     @commands.hybrid_command(name="pause", aliases=["resume"])
     @commands.guild_only()
     @commands.check(audio_playing)
-    @commands.check(in_voice_channel)
     async def pause(self, ctx):
         client = ctx.guild.voice_client
         if client.is_paused():
@@ -257,7 +254,6 @@ class Music(commands.Cog):
     @commands.hybrid_command(name="skip")
     @commands.guild_only()
     @commands.check(audio_playing)
-    @commands.check(in_voice_channel)
     async def skip(self, ctx):
         client = ctx.voice_client
         client.stop()
