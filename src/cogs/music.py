@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import discord
 import httpx
 from discord.ext import commands
+from discord import Embed
 
 from src.audio_source import AudioSource
 from src.audio_streamer import AudioStreamManager
@@ -65,11 +66,21 @@ class Music(commands.Cog):
     @commands.guild_only()
     async def stop(self, ctx):
         """Stops and disconnects the bot from voice"""
+
+        
         client = ctx.guild.voice_client
+        embed = Embed(
+            title="STOPPING MUSIC 🎵",  # Agregado una coma al final de la línea
+            description="DISCONNECTING",
+            color=0x3ef606
+            )
         if client and client.channel:
+            
             await ctx.voice_client.disconnect()
             self.queue = []
             self.now_playing = None
+            
+            
         else:
             raise commands.CommandError("Not in a voice channel.")
 
