@@ -3,7 +3,7 @@ import logging
 
 import discord
 
-from src.audio_streamer import AudioStreamManager
+from src.audio.stream_manager import StreamManager
 
 # Configure logging
 logging.basicConfig(
@@ -15,7 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class AudioSource(discord.PCMVolumeTransformer):
+class Source(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.8):
         """
         Initialize an AudioSource instance.
@@ -35,7 +35,7 @@ class AudioSource(discord.PCMVolumeTransformer):
         cls,
         url,
         *,
-        audio_stream_manager: AudioStreamManager,
+        audio_stream_manager: StreamManager,
         loop=None,
     ):
         """

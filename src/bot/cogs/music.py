@@ -1,105 +1,14 @@
 import asyncio
-import re
-from enum import Enum
-from typing import Optional
 
 import discord
-import httpx
-import spotipy
-import validators
 from discord.ext import commands
-from spotipy.oauth2 import SpotifyClientCredentials
 
-from src.audio_source import AudioSource
-from src.audio_streamer import AudioStreamManager
-from src.cache_manager import CacheManager
-
-
-class URLType(Enum):
-    YOUTUBE = "YouTube"
-    SPOTIFY = "Spotify"
-    UNKNOWN = "Unknown"
-
-
-cache_manager = CacheManager()
-audio_stream_manager = AudioStreamManager(cache_manager=cache_manager)
-
-
-def identify_url_type(url):
-    """
-    Identifies whether the given string is a YouTube or Spotify URL.
-
-    Args:
-        url (str): The URL to evaluate.
-
-    Returns:
-        URLType: Enum indicating the type of URL.
-    """
-    if is_url(url) is False:
-        return URLType.UNKNOWN
-    if "spotify.com" in url:
-        return URLType.SPOTIFY
-    if "youtube.com" in url or "youtu.be" in url:
-        return URLType.YOUTUBE
-
-
-def parse_spotify_url(url: str) -> str:
-    """
-    Parse a Spotify URL to extract the track ID.
-
-    Args:
-        url (str): The Spotify URL to parse.
-
-    Returns:
-        str: The track ID extracted from the URL.
-    """
-    track_id: str = url.split("/track/")[1].split("?")[0]
-
-    spotify = spotipy.Spotify(
-        client_credentials_manager=SpotifyClientCredentials(
-            client_id="9e38891317d2436a8b5377b498b9c57d",
-            client_secret="f71108ab31a44cf39ce44fa1fa78f188",
-        )
-    )
-
-    results = spotify.track(track_id)
-    return f"{results["name"]} - {results["artists"][0]["name"]}"
-
-
-def is_url(url) -> bool:
-    """Check if a given string is a URL."""
-    if not isinstance(url, str):
-        return False
-
-    try:
-        return validators.url(url) is True
-    except validators.ValidationError:
-        return False
-
-
-async def audio_playing(ctx):
-    """Checks that audio is currently playing before continuing."""
-    client = ctx.guild.voice_client
-    if client and client.channel and client.source:
-        return True
-    else:
-        raise commands.CommandError("Not currently playing any audio.")
-
-
-async def in_voice_channel(ctx):
-    """Checks that the command sender is in the same voice channel as the bot."""
-    voice = ctx.author.voice
-    bot_voice = ctx.guild.voice_client
-    if (
-        voice
-        and bot_voice
-        and voice.channel
-        and bot_voice.channel
-        and voice.channel == bot_voice.channel
-    ):
-        return True
-    else:
-        raise commands.CommandError("You need to be in the channel to do that.")
+from src.audio.cache_manager import CacheManager
+from src.audio.source import Source
+from src.audio.stream_manager import StreamManager
+from src.bot.utils.checks import audio_playing
+from src.bot.utils.url_utils import URLType, identify_url_type, parse_spotify_url
+from src.bot.utils.yt_utils import search_youtube
 
 
 class Music(commands.Cog):
@@ -107,6 +16,8 @@ class Music(commands.Cog):
         self.bot = bot
         self.queue = []
         self.now_playing = None
+        self.cache_manager = CacheManager()
+        self.stream_manager = StreamManager(cache_manager=self.cache_manager)
 
     @commands.hybrid_command(name="join")
     @commands.guild_only()
@@ -145,16 +56,6 @@ class Music(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    async def _search_yt(self, query: str) -> Optional[str]:
-        """Search YouTube and return the first video ID matching the query."""
-        params = {"search_query": query}
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://www.youtube.com/results", params=params
-            )
-        search_results = re.findall(r"/watch\?v=(.{11})", response.text)
-        return search_results[0] if search_results else None
-
     async def _defer_interaction(self, ctx):
         """Defer the interaction if it's a slash command."""
         if ctx.interaction:
@@ -170,9 +71,9 @@ class Music(commands.Cog):
 
     async def _create_audio_source(self, song_url: str):
         """Create an audio source from a URL."""
-        source = await AudioSource.from_url(
+        source = await Source.from_url(
             song_url,
-            audio_stream_manager=audio_stream_manager,
+            audio_stream_manager=self.stream_manager,
             loop=self.bot.loop,
         )
         return source
@@ -221,11 +122,11 @@ class Music(commands.Cog):
 
             match url_type:
                 case URLType.UNKNOWN:
-                    video_id = await self._search_yt(song)
+                    video_id = await search_youtube(song)
                     song = f"https://www.youtube.com/watch?v={video_id}"
                 case URLType.SPOTIFY:
                     query = parse_spotify_url(song)
-                    video_id = await self._search_yt(query)
+                    video_id = await search_youtube(query)
                     song = f"https://www.youtube.com/watch?v={video_id}"
                 case URLType.YOUTUBE:
                     pass

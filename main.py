@@ -5,12 +5,11 @@ import sys
 import discord
 from dotenv import load_dotenv
 
-from src.bot import Bot
-from src.cogs.music import Music
+from src.bot.bot import Bot
+from src.bot.cogs.music import Music
 
-if sys.platform.startswith("darwin"):
-    if not discord.opus.is_loaded():
-        discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
+if sys.platform.startswith("darwin") and not discord.opus.is_loaded():
+    discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
 
 load_dotenv()
 

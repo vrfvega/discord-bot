@@ -4,7 +4,7 @@ from typing import Union
 
 import yt_dlp
 
-from src.cache_manager import CacheEntry, CacheManager
+from src.audio.cache_manager import CacheEntry, CacheManager
 
 # Configure logging
 logging.basicConfig(
@@ -16,7 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class AudioStreamManager:
+class StreamManager:
     def __init__(self, cache_manager: CacheManager):
         self.cache_manager = cache_manager
         self.params = {
