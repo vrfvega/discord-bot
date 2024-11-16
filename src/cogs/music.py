@@ -1,5 +1,7 @@
 import asyncio
 import re
+from typing import Optional
+from urllib.parse import urlparse
 
 import discord
 import httpx
@@ -13,7 +15,6 @@ from src.codec_checker import CodecChecker
 cache_manager = CacheManager()
 audio_stream_manager = AudioStreamManager(cache_manager=cache_manager)
 codec_checker = CodecChecker(cache_manager=cache_manager)
-
 url_pattern = r"^(https?://)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"
 
 
@@ -85,14 +86,77 @@ class Music(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    async def _search_yt(self, args):
-        params = {"search_query": args}
+    async def _search_yt(self, query: str) -> Optional[str]:
+        """Search YouTube and return the first video ID matching the query."""
+        params = {"search_query": query}
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://www.youtube.com/results", params=params
             )
-            search_results = re.findall(r"/watch\?v=(.{11})", response.text)
-            return search_results[0]
+        search_results = re.findall(r"/watch\?v=(.{11})", response.text)
+        return search_results[0] if search_results else None
+
+    def _is_url(self, string: str) -> bool:
+        """Check if the given string is a valid URL."""
+        try:
+            result = urlparse(string)
+            return all([result.scheme, result.netloc])
+        except ValueError:
+            return False
+
+    async def _defer_interaction(self, ctx):
+        """Defer the interaction if it's a slash command."""
+        if ctx.interaction:
+            await ctx.interaction.response.defer()
+
+    async def _send_message(self, ctx, content=None, embed=None):
+        """Send a message depending on whether it's a slash command or a text command."""
+        if ctx.interaction:
+            followup = ctx.interaction.followup
+            await followup.send(content=content, embed=embed)
+        else:
+            await ctx.send(content=content, embed=embed)
+
+    async def _create_audio_source(self, song_url: str):
+        """Create an audio source from a URL."""
+        source = await AudioSource.from_url(
+            song_url,
+            audio_stream_manager=audio_stream_manager,
+            codec_checker=codec_checker,
+            loop=self.bot.loop,
+        )
+        return source
+
+    async def _add_song_to_queue(self, ctx, song_url: str):
+        """Add a song to the queue."""
+        source = await self._create_audio_source(song_url)
+        self.queue.append(source)
+        embed = discord.Embed(
+            description=f"Queued [{source.title}]({source.url}) [{ctx.author.mention}]",
+            color=discord.Color.blurple(),
+        )
+        await self._send_message(ctx, embed=embed)
+
+    async def _after_song_played(self, client):
+        """Handle the next steps after a song has finished playing."""
+        if self.queue:
+            next_source = self.queue.pop(0)
+            self._play_song(client, next_source)
+        else:
+            await client.disconnect()
+
+    def _play_song(self, client, source):
+        """Play a song and set up the after_playing callback."""
+        self.now_playing = source
+
+        def after_playing(error):
+            if error:
+                print(f"Error after playing a song: {error}")
+            client.loop.call_soon_threadsafe(
+                asyncio.create_task, self._after_song_played(client)
+            )
+
+        client.play(source, after=after_playing)
 
     @commands.hybrid_command(name="play", aliases=["p"])
     @commands.guild_only()
@@ -101,20 +165,15 @@ class Music(commands.Cog):
         Streams from a URL or a search query (supports most sources compatible with yt-dlp).
         """
         try:
-            # Defer interaction if it's a slash command
-            if ctx.interaction:
-                await ctx.interaction.response.defer()
+            await self._defer_interaction(ctx)
 
-            # Check if the input is a URL; otherwise, search
-            if not re.match(url_pattern, song):
+            # Check if the input is a URL; otherwise, search YouTube
+            if not self._is_url(song):
                 video_id = await self._search_yt(song)
                 if not video_id:
-                    if ctx.interaction:
-                        await ctx.interaction.followup.send(
-                            "No video IDs found for the search query."
-                        )
-                    else:
-                        await ctx.send("No video IDs found for the search query.")
+                    await self._send_message(
+                        ctx, content="No video IDs found for the search query."
+                    )
                     return
                 song = f"https://www.youtube.com/watch?v={video_id}"
 
@@ -122,70 +181,25 @@ class Music(commands.Cog):
 
             if client and client.channel:
                 # Add song to the queue
-                source = await AudioSource.from_url(
-                    song,
-                    audio_stream_manager=audio_stream_manager,
-                    codec_checker=codec_checker,
-                    loop=self.bot.loop,
-                )
-                self.queue.append(source)
-                embed = discord.Embed(
-                    description=f"Queued [{source.title}]({source.url}) [{ctx.author.mention}]",
-                    color=discord.Color.blurple(),
-                )
-                if ctx.interaction:
-                    await ctx.interaction.followup.send(embed=embed)
-                else:
-                    await ctx.send(embed=embed)
+                await self._add_song_to_queue(ctx, song)
             else:
                 if ctx.author.voice and ctx.author.voice.channel:
                     # Join the voice channel and play the song
                     channel = ctx.author.voice.channel
-                    source = await AudioSource.from_url(
-                        song,
-                        audio_stream_manager=audio_stream_manager,
-                        codec_checker=codec_checker,
-                        loop=self.bot.loop,
-                    )
+                    source = await self._create_audio_source(song)
                     client = await channel.connect()
                     self._play_song(client, source)
                     embed = discord.Embed(
                         description=f"Now playing [{source.title}]({source.url}) [{ctx.author.mention}]",
                         color=discord.Color.green(),
                     )
-                    if ctx.interaction:
-                        await ctx.interaction.followup.send(embed=embed)
-                    else:
-                        await ctx.send(embed=embed)
+                    await self._send_message(ctx, embed=embed)
                 else:
-                    if ctx.interaction:
-                        await ctx.interaction.followup.send(
-                            "You are not connected to a voice channel."
-                        )
-                    else:
-                        await ctx.send("You are not connected to a voice channel.")
+                    await self._send_message(
+                        ctx, content="You are not connected to a voice channel."
+                    )
         except Exception as e:
-            if ctx.interaction:
-                await ctx.interaction.followup.send(f"An error occurred: {e}")
-            else:
-                await ctx.send(f"An error occurred: {e}")
-
-    def _play_song(self, client, source):
-        self.now_playing = source
-
-        def after_playing(error):
-            if error:
-                print(f"Error after playing a song: {error}")
-
-            if len(self.queue) > 0:
-                next_source = self.queue.pop(0)
-                asyncio.run_coroutine_threadsafe(
-                    self._play_song(client, next_source), self.bot.loop
-                )
-            else:
-                asyncio.run_coroutine_threadsafe(client.disconnect(), self.bot.loop)
-
-        client.play(source, after=after_playing)
+            await self._send_message(ctx, content=f"An error occurred: {e}")
 
     @commands.hybrid_command(name="queue", aliases=["playlist", "q"])
     @commands.guild_only()
@@ -222,10 +236,6 @@ class Music(commands.Cog):
     @commands.check(in_voice_channel)
     async def volume(self, ctx, volume: int):
         """Changes the player's volume"""
-
-        if ctx.voice_client is None:
-            return await ctx.send("Not connected to a voice channel.")
-
         ctx.voice_client.source.volume = volume / 100
         embed = discord.Embed(
             description=f"Changed volume to {volume}% [{ctx.author.mention}]",
