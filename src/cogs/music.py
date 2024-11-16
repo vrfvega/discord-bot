@@ -14,7 +14,6 @@ from src.codec_checker import CodecChecker
 
 cache_manager = CacheManager()
 audio_stream_manager = AudioStreamManager(cache_manager=cache_manager)
-codec_checker = CodecChecker(cache_manager=cache_manager)
 
 
 async def audio_playing(ctx):
@@ -121,7 +120,6 @@ class Music(commands.Cog):
         source = await AudioSource.from_url(
             song_url,
             audio_stream_manager=audio_stream_manager,
-            codec_checker=codec_checker,
             loop=self.bot.loop,
         )
         return source
