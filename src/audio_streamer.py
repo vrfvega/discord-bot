@@ -1,9 +1,19 @@
 import asyncio
+import logging
 from typing import Union
 
 import yt_dlp
 
 from src.cache_manager import CacheEntry, CacheManager
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()],  # Log to console
+)
+
+logger = logging.getLogger(__name__)
 
 
 class AudioStreamManager:
@@ -27,19 +37,23 @@ class AudioStreamManager:
         """Asynchronously retrieve the audio stream URL and metadata, using the cache if available."""
         entry = self.cache_manager.get_entry(url)
 
-        if entry and entry.audio_stream_url:
-            return entry.audio_stream_url, entry.metadata
+        if entry:
+            return entry.stream_url, entry.meta
 
-        # Use asyncio.to_thread to run the blocking extract_info in a separate thread
-        info = await asyncio.to_thread(self.ytdl.extract_info, url, download=False)
+        try:
+            info = await asyncio.to_thread(self.ytdl.extract_info, url, download=False)
+        except Exception as e:
+            logger.error(f"Failed to extract info for URL {url}: {e}")
+            raise
+
         stream_url = info["url"]
-        metadata = {
+        meta = {
             "title": info.get("title"),
             "webpage_url": info.get("webpage_url"),
             "uploader": info.get("uploader"),
         }
 
         self.cache_manager.save_entry(
-            CacheEntry(source_url=url, audio_stream_url=stream_url, metadata=metadata)
+            CacheEntry(source_url=url, stream_url=stream_url, meta=meta)
         )
-        return stream_url, metadata
+        return stream_url, meta

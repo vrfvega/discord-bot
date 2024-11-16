@@ -4,7 +4,6 @@ import logging
 import discord
 
 from src.audio_streamer import AudioStreamManager
-from src.codec_checker import CodecChecker
 
 # Configure logging
 logging.basicConfig(
@@ -37,7 +36,6 @@ class AudioSource(discord.PCMVolumeTransformer):
         url,
         *,
         audio_stream_manager: AudioStreamManager,
-        codec_checker: CodecChecker,
         loop=None,
     ):
         """
@@ -49,35 +47,35 @@ class AudioSource(discord.PCMVolumeTransformer):
         :return: An instance of AudioSource.
         """
         logger.info(f"Fetching audio source for URL: {url}")
-        if not audio_stream_manager or not codec_checker:
-            logger.error("Missing dependencies: audio_stream_manager or codec_checker")
+        if not audio_stream_manager:
+            logger.error("Missing dependencies: audio_stream_manager")
             raise ValueError("All dependencies must be provided.")
 
         loop = loop or asyncio.get_event_loop()
 
         try:
             # Get the audio stream URL and metadata
-            stream_url, metadata = await audio_stream_manager.get_stream_info(url)
+            stream_url, meta = await audio_stream_manager.get_stream_info(url)
             logger.info(f"Stream URL fetched: {stream_url}")
             logger.info(
-                f"Metadata fetched: {metadata.get('title')} by {metadata.get('uploader')}"
+                f"Metadata fetched: {meta.get("title")} by {meta.get("uploader")}"
             )
-
-            # Check if the audio is Opus-encoded
-            logger.info("Checking if the stream is Opus-encoded...")
-            is_opus = codec_checker.is_opus_encoded(stream_url)
-            if not is_opus:
-                logger.warning(f"The audio stream at {stream_url} is not Opus-encoded.")
-
             # Prepare the FFmpeg audio source
             ffmpeg_options = {
-                "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2",
+                "before_options": (
+                    "-reconnect 1 "
+                    "-reconnect_streamed 1 "
+                    "-reconnect_delay_max 2 "
+                    "-probesize 32 "
+                    "-analyzeduration 0 "
+                    "-loglevel panic"
+                ),
                 "options": "-vn",
             }
             logger.info("Preparing FFmpeg audio source...")
             source = discord.FFmpegPCMAudio(stream_url, **ffmpeg_options)
             logger.info("AudioSource successfully prepared.")
-            return cls(source, data=metadata)
+            return cls(source, data=meta)
 
         except Exception as e:
             logger.error(f"Error in from_url: {e}")
