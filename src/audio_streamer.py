@@ -21,19 +21,7 @@ logger = logging.getLogger(__name__)
 class AudioStreamManager:
     def __init__(self, cache_manager: CacheManager):
         self.cache_manager = cache_manager
-        """ self.params = {
-            "format": "bestaudio",
-            "audio_quality": 3,
-            "headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-            },
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "extract_flat": True,
-            "cookiefile": "cookies.txt",
-        }
-        self = yt_dlp.YoutubeDL(self.params)"""
+        
 
     async def get_stream_info(self, url: str) -> Union[str, dict]:
         """
@@ -41,7 +29,6 @@ class AudioStreamManager:
         :param url: The URL of the video to extract audio stream information from.
         :return: The audio stream URL and metadata as a dictionary.
         """
-
         
         # Check cache for the URL
         entry = self.cache_manager.get_entry(url)
