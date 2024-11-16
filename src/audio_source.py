@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 import discord
 
@@ -46,6 +47,7 @@ class AudioSource(discord.PCMVolumeTransformer):
         :param loop: Event loop for asynchronous tasks.
         :return: An instance of AudioSource.
         """
+        
         logger.info(f"Fetching audio source for URL: {url}")
         if not audio_stream_manager:
             logger.error("Missing dependencies: audio_stream_manager")
@@ -54,8 +56,13 @@ class AudioSource(discord.PCMVolumeTransformer):
         loop = loop or asyncio.get_event_loop()
 
         try:
+            
             # Get the audio stream URL and metadata
+            start_time = time.time()  # Start timing
             stream_url, meta = await audio_stream_manager.get_stream_info(url)
+            elapsed_time = time.time() - start_time
+            logger.info(f"Time taken: {elapsed_time:.2f} seconds")
+            
             logger.info(f"Stream URL fetched: {stream_url}")
             logger.info(
                 f"Metadata fetched: {meta.get("title")} by {meta.get("uploader")}"
@@ -80,3 +87,5 @@ class AudioSource(discord.PCMVolumeTransformer):
         except Exception as e:
             logger.error(f"Error in from_url: {e}")
             raise
+
+    

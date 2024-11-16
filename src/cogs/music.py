@@ -1,7 +1,10 @@
 import asyncio
+from asyncio.log import logger
 import re
 from enum import Enum
 from typing import Optional
+import time
+
 
 import discord
 import httpx
@@ -180,12 +183,17 @@ class Music(commands.Cog):
 
     async def _create_audio_source(self, song_url: str):
         """Create an audio source from a URL."""
+        start_time = time.time()  # Start timing
+
         source = await AudioSource.from_url(
             song_url,
             audio_stream_manager=audio_stream_manager,
             loop=self.bot.loop,
         )
+        elapsed_time = time.time() - start_time
+        logger.info(f"Time taken: {elapsed_time:.2f} seconds")
         return source
+        
 
     async def _add_song_to_queue(self, ctx, song_url: str):
         """Add a song to the queue."""
