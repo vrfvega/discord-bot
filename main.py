@@ -49,16 +49,29 @@ def handle_exception(loop, context):
 async def main():
     """Main entry point for the bot."""
     try:
-        # Set up signal handlers
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown(s)))
-
         # Set up exception handler
+        loop = asyncio.get_running_loop()
         loop.set_exception_handler(handle_exception)
 
+        # Use a platform-independent signal handler
+        stop_event = asyncio.Event()
+
+        def stop_event_handler():
+            stop_event.set()
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda s, f: stop_event_handler())
+
         logger.info("Starting bot...")
-        await bot.start(TOKEN)
+        # Start the bot in the background
+        bot_task = asyncio.create_task(bot.start(TOKEN))
+
+        # Wait for the stop event
+        await stop_event.wait()
+
+        logger.info("Shutdown initiated.")
+        bot_task.cancel()
+        await shutdown()
 
     except Exception as e:
         logger.exception(f"Fatal error: {e}")
