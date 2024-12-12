@@ -5,7 +5,6 @@ import lavalink
 from discord.ext import commands
 from lavalink.errors import ClientError
 from lavalink.events import QueueEndEvent, TrackStartEvent
-from lavalink.filters import LowPass
 from lavalink.server import LoadType
 
 url_rx = re.compile(r"https?://(?:www\.)?.+")
@@ -265,7 +264,7 @@ class Music(commands.Cog):
             return await ctx.send(embed=embed)
         else:
             track = results.tracks[0]
-            
+
             # requester isn't necessary but it helps keep track of who queued what.
             # You can store additional metadata by passing it as a kwarg (i.e. key=value)
             player.add(track=track, requester=ctx.author.id)
@@ -274,7 +273,6 @@ class Music(commands.Cog):
                 embed.title = "Track Enqueued"
                 embed.description = f"[{track.title}]({track.uri})"
                 return await ctx.send(embed=embed)
-
 
         # We don't want to call .play() if the player is playing as that will effectively skip
         # the current track.
@@ -335,9 +333,11 @@ class Music(commands.Cog):
         await player.stop()
         # Disconnect from the voice channel.
         await ctx.voice_client.disconnect(force=True)
-        
+
         embed = discord.Embed(color=discord.Color.blurple())
-        embed.description = "I've automatically left the voice channel due to inactivity."
+        embed.description = (
+            "I've automatically left the voice channel due to inactivity."
+        )
         await ctx.send(embed=embed)
 
 
